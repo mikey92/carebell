@@ -39,7 +39,23 @@ Severity: **high** blocks the build, **medium** costs real time or forces a work
 - **Severity:** low.
 - **Suggestion:** native `<select>` elements, or commit the typed value on blur.
 
+## 6. Connecting a private app needs a Ring location, and the error doesn't say so
+- **Task:** install CareBell (private app) on a new Ring account to exercise real token exchange and account linking.
+- **Steps:** created a Ring account → Developer Console → Connect Ring account (worked) → ring.com/appstore → Staging Apps → CareBell → Connect App → Agree and Continue.
+- **Expected:** device selection, then a redirect to my Account Link URL with `nonce` and `time`.
+- **Actual:** "There are currently no eligible locations available for subscription. We cannot sign you up for this service." and a single "Got It" button.
+- **Severity:** high for anyone without a Ring device: the token exchange and nonce linking can't be tested end to end, and the Playground token can't stand in for it.
+- **Workaround:** the linking code is covered by unit tests against the documented flow; the live demo uses the Playground token.
+- **Suggestion:** let a Playground account (or a developer's account with no devices) link private apps to the Playground device, and make the error say that a location with at least one device is required.
+
+## 7. New Ring accounts are pushed into SMS two-step setup
+- **Task:** create a Ring account for testing.
+- **Actual:** right after email verification the site asks for a phone number for SMS two-step verification, with only a Continue button.
+- **Severity:** low.
+- **Suggestion:** a "later" option for developer test accounts.
+
 ## What worked well
 - `GET /v1/devices`, `/status`, `/capabilities` answered first time with a Playground token; JSON:API responses are consistent.
 - The webhook docs are unusually precise: raw-body HMAC, hex encoding, `request_id` for idempotency, the retry schedule. CareBell's handler was written from the docs alone.
 - The `ring-api-helloworld` repo is a good map of the endpoints.
+- Creating a private app, setting the four endpoint URLs and seeing it under "Staging Apps" in the Ring Appstore took minutes.

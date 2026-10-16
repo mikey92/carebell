@@ -1,0 +1,20 @@
+{
+  "name": "carebell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ring doorbell visit verification for home-care agencies and families.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test 'test/*.test.ts'",
+    "simulate": "node src/simulate.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.7"
+  }
+}

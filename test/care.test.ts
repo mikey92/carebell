@@ -92,3 +92,32 @@ test("webhook signatures: raw-body HMAC-SHA256, hex, sha256= prefix", () => {
   assert.equal(parseWebhook(body).data.type, "button_press");
   assert.throws(() => parseWebhook(Buffer.from("{}")));
 });
+
+test("a visit nobody is seen leaving closes without inventing a departure time", () => {
+  const e = setup();
+  e.handle(ev("button_press", T0));
+  e.tick(T0 + 181 * MIN);
+  const v = e.s.visits[0];
+  assert.equal(v.status, "completed");
+  assert.equal(v.checkOut, undefined);
+  assert.ok(v.flags.includes("departure not seen"));
+});
+
+test("a late-delivered event can't move a departure backwards", () => {
+  const e = setup();
+  e.handle(ev("button_press", T0));
+  e.handle(ev("motion_detected", T0 + 110 * MIN, "human"));
+  e.handle(ev("motion_detected", T0 + 25 * MIN, "human")); // retried, arrives after the departure
+  assert.equal(e.s.visits[0].checkOut, T0 + 110 * MIN);
+});
+
+test("a package delivery doesn't end the visit; the real departure later does", () => {
+  const e = setup();
+  e.handle(ev("button_press", T0));
+  assert.equal(e.handle(ev("motion_detected", T0 + 30 * MIN, "package_delivery")), undefined);
+  assert.equal(e.handle(ev("motion_detected", T0 + 31 * MIN, "motion"))?.status, "on_site");
+  e.handle(ev("motion_detected", T0 + 40 * MIN, "human")); // someone at the door mid-visit: read as leaving...
+  const v = e.handle(ev("motion_detected", T0 + 115 * MIN, "human")); // ...until the aide really leaves
+  assert.equal(v?.checkOut, T0 + 115 * MIN);
+  assert.ok(!v?.flags.some((f) => f.startsWith("short")));
+});

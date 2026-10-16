@@ -80,3 +80,4 @@ button:hover { border-color: var(--green); }
 .demo .plain { background: transparent; }
 
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .phone { min-height: 0; } }
+.demo[hidden] { display: none; }

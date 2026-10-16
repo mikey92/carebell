@@ -11,9 +11,17 @@ import { visitCardHtml } from "./card.ts";
 const CARD = "ui://carebell/visit-card";
 const MIN = 60_000;
 
-export function time(ms: number, tz = "America/Los_Angeles") {
-  return new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz });
+/** One time zone for every time CareBell shows or says (the agency's). */
+export const TZ = process.env.CAREBELL_TZ ?? "America/Los_Angeles";
+export function time(ms: number) {
+  return new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TZ });
 }
+
+/** The agency's day: visits from 14 hours back to 14 hours ahead, so a demo never falls off a midnight. */
+export const WINDOW = 14 * 60 * 60_000;
+
+/** What goes to an assistant: no photos, no private notes. */
+export const forAssistant = (v: any) => ({ id: v.id, status: v.status, start: v.start, end: v.end, checkIn: v.checkIn, checkOut: v.checkOut, tasks: v.tasks, flags: v.flags, client: { name: v.client.name }, aide: { name: v.aide.name } });
 
 export function describe(v: Visit & { client: { name: string }; aide: { name: string } }, now: number): string {
   const who = v.aide.name.split(" ")[0];
@@ -27,23 +35,23 @@ export function describe(v: Visit & { client: { name: string }; aide: { name: st
     case "on_site":
       return `${who} arrived at ${time(v.checkIn!)} and has been there ${Math.round((now - v.checkIn!) / MIN)} minutes.`;
     case "completed":
-      return `${who} came at ${time(v.checkIn!)} and left at ${time(v.checkOut!)}${v.flags.length ? ` (${v.flags.join("; ")})` : ""}.`;
+      if (v.checkIn === undefined) return `${who}'s visit at ${time(v.start)} is closed.`;
+      return v.checkOut === undefined
+        ? `${who} came at ${time(v.checkIn)}; the doorbell didn't see them leave.`
+        : `${who} came at ${time(v.checkIn)} and left at ${time(v.checkOut)}${v.flags.length ? ` (${v.flags.join("; ")})` : ""}.`;
   }
 }
 
 function findClient(e: Engine, name?: string) {
   if (!name) return e.s.clients[0];
-  const n = name.toLowerCase();
+  const n = name.toLowerCase().replace(/^(my |the )/, "");
+  if (/^(mom|mother|mum|dad|father)$/.test(n)) return e.s.clients[0];
   return e.s.clients.find((c) => c.name.toLowerCase().includes(n) || c.id === n || c.family.some((f) => f.toLowerCase().includes(n))) ?? e.s.clients[0];
 }
 
 export function buildMcp(engine: Engine, clock: Clock, save: () => void) {
   const server = new McpServer({ name: "carebell", version: "0.1.0" }, { instructions: "CareBell tells a family whether their parent's home-care aide came, using the Ring doorbell at the parent's door. Answer in one or two spoken sentences; the card shows the detail." });
-  const today = () => {
-    const d = new Date(clock.now());
-    d.setHours(0, 0, 0, 0);
-    return engine.day(d.getTime());
-  };
+  const today = () => engine.between(clock.now() - WINDOW, clock.now() + WINDOW);
   const ui = { ui: { resourceUri: CARD } };
 
   server.registerResource("visit-card", CARD, { mimeType: "text/html;profile=mcp-app", description: "A visit timeline card for screens." }, async () => ({
@@ -62,9 +70,13 @@ export function buildMcp(engine: Engine, clock: Clock, save: () => void) {
       const now = clock.now();
       const c = findClient(engine, client);
       const visits = today().filter((v) => v.clientId === c.id);
-      const current = visits.find((v) => v.status === "on_site" || v.status === "late" || v.status === "missed") ?? [...visits].reverse().find((v) => v.start <= now) ?? visits[0];
+      const current =
+        visits.find((v) => v.status === "on_site") ??
+        visits.find((v) => v.status === "late" || v.status === "missed") ??
+        [...visits].reverse().find((v) => v.start <= now) ??
+        visits[0];
       const text = current ? describe(current, now) : `No visits on ${c.name}'s schedule today.`;
-      return { content: [{ type: "text", text }], structuredContent: { client: c.name, now, visits, current: current?.id ?? null } };
+      return { content: [{ type: "text", text }], structuredContent: { client: c.name, now, tz: TZ, visits: visits.map(forAssistant), current: current?.id ?? null } };
     },
   );
 
@@ -82,7 +94,7 @@ export function buildMcp(engine: Engine, clock: Clock, save: () => void) {
       const visits = today().filter((v) => !c || v.clientId === c.id);
       return {
         content: [{ type: "text", text: visits.map((v) => `${time(v.start)} ${v.client.name}: ${describe(v, now)}`).join("\n") || "Nothing scheduled today." }],
-        structuredContent: { client: c?.name ?? null, now, visits, current: null },
+        structuredContent: { client: c?.name ?? null, now, tz: TZ, visits: visits.map(forAssistant), current: null },
       };
     },
   );
@@ -91,7 +103,7 @@ export function buildMcp(engine: Engine, clock: Clock, save: () => void) {
     "recent_alerts",
     { title: "Recent alerts", description: "Alerts CareBell sent today (arrivals, departures, late and missed visits, offline doorbells).", inputSchema: { limit: z.number().int().min(1).max(20).optional() } },
     async ({ limit }) => {
-      const a = engine.s.alerts.slice(-(limit ?? 5)).reverse();
+      const a = engine.s.alerts.filter((x) => x.at >= clock.now() - WINDOW).slice(-(limit ?? 5)).reverse();
       return { content: [{ type: "text", text: a.map((x) => `${time(x.at)} ${x.text}`).join("\n") || "No alerts today." }], structuredContent: { alerts: a } };
     },
   );

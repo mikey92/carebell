@@ -3,15 +3,21 @@
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const tm = (ms) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+let TZ;
+const tm = (ms) => (ms == null ? "—" : new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TZ }));
+/** Demo controls need the key the server prints into data/demo.key, passed as #demo=<key>. */
+const DEMO_KEY = new URLSearchParams(location.hash.slice(1)).get("demo") ?? "";
 const LABEL = { scheduled: "Scheduled", on_site: "With client", completed: "Done", late: "Late", missed: "Missed" };
 let state = null;
 const seenAlerts = new Set();
 
 function line(v, now) {
   const a = v.aide.name.split(" ")[0];
-  if (v.status === "completed") return `${a} came ${tm(v.checkIn)}, left ${tm(v.checkOut)}`;
-  if (v.status === "on_site") return `${a} arrived ${tm(v.checkIn)} · ${Math.round((now - v.checkIn) / 60000)} min so far`;
+  if (v.status === "completed") return v.checkOut == null ? `${a} came ${tm(v.checkIn)} · departure not seen` : `${a} came ${tm(v.checkIn)}, left ${tm(v.checkOut)}`;
+  if (v.status === "on_site") {
+    const m = Math.round((now - v.checkIn) / 60000);
+    return `${a} arrived ${tm(v.checkIn)} · ${m < 1 ? "just now" : `${m} min so far`}`;
+  }
   if (v.status === "late") return `${a} due ${tm(v.start)} · not at the door yet`;
   if (v.status === "missed") return `${a} due ${tm(v.start)} · nobody came`;
   return `${a} · ${tm(v.start)} – ${tm(v.end)}`;
@@ -20,7 +26,7 @@ function line(v, now) {
 function evidence(v) {
   return v.evidence
     .filter((e) => e.role !== "seen")
-    .map((e) => `${e.role === "arrival" ? "in" : "out"}: ${e.type === "button_press" ? "doorbell" : `motion (${e.subType})`} ${tm(e.at)}`)
+    .map((e) => `${e.role === "arrival" ? "in" : "out"}: ${e.type === "button_press" ? "doorbell" : `motion (${esc(e.subType)})`} ${tm(e.at)}`)
     .join("<br>");
 }
 
@@ -33,10 +39,11 @@ function alertItem(a) {
 function render(s) {
   const first = !state;
   state = s;
+  TZ = s.tz;
   $("#clock").textContent = tm(s.now);
   const r = s.ring;
   $("#ring").classList.toggle("on", r.connected);
-  $("#ring-text").textContent = r.connected ? `Ring connected · ${r.device.name} ${r.device.online ? "online" : "offline"}` : `Ring: ${r.error || "not connected"}`;
+  $("#ring-text").textContent = r.connected ? `Ring connected (${r.via}) · ${r.device.name} ${r.device.online ? "online" : "offline"}` : `Ring: ${r.error || "not connected"}`;
 
   const mom = s.visits.filter((v) => v.clientId === "park");
   $("#family-visits").innerHTML = mom
@@ -74,15 +81,17 @@ async function mcp(method, params) {
   return j.result;
 }
 
-let cardReady = null;
-async function loadCard() {
-  await mcp("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "carebell-alexa-sim", version: "0.1.0" } });
-  const res = await mcp("resources/read", { uri: "ui://carebell/visit-card" });
-  const frame = $("#card");
-  frame.srcdoc = res.contents[0].text;
-  cardReady = new Promise((ok) => (frame.onload = ok));
-}
-loadCard();
+const frame = $("#card");
+const cardReady = new Promise((ok) => (frame.onload = ok));
+(async () => {
+  try {
+    await mcp("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "carebell-alexa-sim", version: "0.1.0" } });
+    const res = await mcp("resources/read", { uri: "ui://carebell/visit-card" });
+    frame.srcdoc = res.contents[0].text;
+  } catch (e) {
+    $("#reply").textContent = `CareBell's card didn't load (${e.message}).`;
+  }
+})();
 
 /** What Alexa+ does with its own model; here a few phrasings are enough to route to the right tool. */
 function route(q) {
@@ -125,7 +134,12 @@ $("#ask").addEventListener("submit", (e) => {
 document.querySelectorAll(".chips button").forEach((b) => b.addEventListener("click", () => ask(b.dataset.q)));
 
 // ---- Demo controls ----
-const post = (url, body) => fetch(url, { method: "POST", body: JSON.stringify(body) }).then((r) => r.json());
+const post = (url, body) =>
+  fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Demo-Key": DEMO_KEY }, body: JSON.stringify(body) }).then((r) => {
+    if (r.status === 403) alert("Demo controls need the demo key in the address (#demo=…).");
+    return r.json();
+  });
+if (!DEMO_KEY) document.querySelector(".demo").hidden = true;
 document.querySelectorAll("[data-door]").forEach((b) =>
   b.addEventListener("click", () => post("/api/demo/door", { clientId: b.dataset.door, type: b.dataset.type, subType: b.dataset.sub })),
 );

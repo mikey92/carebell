@@ -67,7 +67,10 @@ export const RULES = {
 const MIN = 60_000;
 const fmt = (ms: number) => `${Math.round(ms / MIN)} min`;
 
+/** Arrival: a doorbell press, or a person (or unclassified motion, when Smart Alerts is off). */
 const isPerson = (e: DoorEvent) => e.type === "button_press" || (e.type === "motion_detected" && (e.subType === "human" || e.subType === "motion"));
+/** Departure needs stronger evidence: a press or a classified person, not any motion. */
+const isLeaving = (e: DoorEvent) => e.type === "button_press" || (e.type === "motion_detected" && e.subType === "human");
 
 export class Engine {
   s: CareState;
@@ -95,6 +98,7 @@ export class Engine {
     if (this.s.seen.includes(e.id)) return;
     this.s.seen.push(e.id);
     if (this.s.seen.length > 5000) this.s.seen.splice(0, 1000);
+    if (this.s.alerts.length > 500) this.s.alerts.splice(0, 100);
 
     const clients = this.s.clients.filter((c) => c.deviceId === e.deviceId);
     if (e.type === "device_offline" || e.type === "device_online") {
@@ -114,9 +118,14 @@ export class Engine {
     const ids = new Set(clients.map((c) => c.id));
     const visits = this.s.visits.filter((v) => ids.has(v.clientId));
 
-    // Someone already inside: this is them leaving (or stepping out).
-    const here = visits.find((v) => v.status === "on_site" || (v.status === "completed" && v.checkOut && e.timestamp - v.checkOut < 10 * MIN));
-    if (here && e.timestamp - here.checkIn! >= RULES.minStayMs) {
+    // Someone already inside: this is them leaving (or stepping out). A completed visit takes a later
+    // departure while its planned window is still open, so a delivery at the door doesn't end it early.
+    const here = visits.find(
+      (v) =>
+        (v.status === "on_site" && e.timestamp >= v.checkIn!) ||
+        (v.status === "completed" && v.checkOut !== undefined && e.timestamp >= v.checkOut && (e.timestamp - v.checkOut < 10 * MIN || e.timestamp <= v.end)),
+    );
+    if (here && isLeaving(e) && e.timestamp - here.checkIn! >= RULES.minStayMs) {
       const first = here.status === "on_site";
       here.status = "completed";
       here.checkOut = e.timestamp;
@@ -196,17 +205,17 @@ export class Engine {
         });
       }
       if (v.status === "on_site" && now >= v.end + 60 * MIN) {
-        v.flags.push("no departure seen");
+        // Nobody was seen leaving; the record says so instead of inventing a time.
+        v.flags.push("departure not seen");
         v.status = "completed";
       }
     }
   }
 
-  /** What a family member or an agency scheduler wants to know, for one day. */
-  day(dayStart: number) {
-    const end = dayStart + 24 * 60 * MIN;
+  /** Visits starting in [from, to), with their client and aide: what a family or a scheduler looks at. */
+  between(from: number, to: number) {
     return this.s.visits
-      .filter((v) => v.start >= dayStart && v.start < end)
+      .filter((v) => v.start >= from && v.start < to)
       .sort((a, b) => a.start - b.start)
       .map((v) => ({ ...v, client: this.client(v.clientId), aide: this.aide(v.aideId) }));
   }

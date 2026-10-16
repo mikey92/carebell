@@ -22,7 +22,13 @@ export class Store {
   state: CareState;
   constructor(path: string, seed: () => CareState) {
     this.path = path;
-    this.state = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as CareState) : seed();
+    let loaded: CareState | undefined;
+    try {
+      loaded = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as CareState) : undefined;
+    } catch {
+      loaded = undefined; // a damaged file shouldn't keep the server down
+    }
+    this.state = loaded ?? seed();
   }
   save() {
     mkdirSync(dirname(this.path), { recursive: true });

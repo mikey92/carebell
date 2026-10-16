@@ -17,15 +17,17 @@ export function visitCardHtml(): string {
 </style></head><body><div class="wrap" id="root"><p class="sub">Waiting for CareBell…</p></div>
 <script>
 const LABEL={scheduled:"Scheduled",on_site:"With client",completed:"Done",late:"Late",missed:"Missed"};
-const tm=ms=>new Date(ms).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+let TZ;const tm=ms=>ms==null?"—":new Date(ms).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:TZ});
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 function render(d){
   if(!d||!d.visits)return;
+  TZ=d.tz;
   const r=document.getElementById("root");
   const who=d.client||"Today";
-  r.innerHTML="<h1>"+who+"</h1><p class='sub'>Visits today · checked by the Ring doorbell</p>"+d.visits.map(v=>{
+  r.innerHTML="<h1>"+esc(who)+"</h1><p class='sub'>Visits today · checked by the Ring doorbell</p>"+d.visits.map(v=>{
     const a=v.aide.name.split(" ")[0];
-    const line=v.status==="completed"?"Arrived "+tm(v.checkIn)+" · left "+tm(v.checkOut):v.status==="on_site"?"Arrived "+tm(v.checkIn)+" · "+Math.round((d.now-v.checkIn)/60000)+" min so far":v.status==="late"?"Due "+tm(v.start)+" · not at the door yet":v.status==="missed"?"Due "+tm(v.start)+" · nobody came":"Due "+tm(v.start)+" – "+tm(v.end);
-    return "<div class='v "+v.status+(v.id===d.current?" focus":"")+"'><div class='dot'></div><div style='flex:1'><span class='badge'>"+LABEL[v.status]+"</span><div class='t'>"+a+" · "+v.client.name+"</div><div class='m'>"+line+"</div><div class='m'>"+v.tasks.join(" · ")+"</div>"+(v.flags||[]).map(f=>"<div class='flag'>⚠ "+f+"</div>").join("")+"</div></div>";
+    const line=v.status==="completed"?(v.checkOut==null?"Arrived "+tm(v.checkIn)+" · departure not seen":"Arrived "+tm(v.checkIn)+" · left "+tm(v.checkOut)):v.status==="on_site"?"Arrived "+tm(v.checkIn)+" · "+Math.round((d.now-v.checkIn)/60000)+" min so far":v.status==="late"?"Due "+tm(v.start)+" · not at the door yet":v.status==="missed"?"Due "+tm(v.start)+" · nobody came":"Due "+tm(v.start)+" – "+tm(v.end);
+    return "<div class='v "+v.status+(v.id===d.current?" focus":"")+"'><div class='dot'></div><div style='flex:1'><span class='badge'>"+LABEL[v.status]+"</span><div class='t'>"+esc(a)+" · "+esc(v.client.name)+"</div><div class='m'>"+line+"</div><div class='m'>"+esc(v.tasks.join(" · "))+"</div>"+(v.flags||[]).map(f=>"<div class='flag'>⚠ "+esc(f)+"</div>").join("")+"</div></div>";
   }).join("");
 }
 let id=1;

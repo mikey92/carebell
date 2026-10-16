@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareBell</title>
+<meta name="description" content="Did the caregiver come? CareBell reads the Ring doorbell at a parent's door and tells the family and the care agency.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a7f64'/%3E%3Cpath d='M16 7a6 6 0 0 0-6 6v5l-2 3h16l-2-3v-5a6 6 0 0 0-6-6zM13.5 23a2.5 2.5 0 0 0 5 0' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">🔔</span><div><h1>CareBell</h1><p>Did the caregiver come? The Ring doorbell at the door knows.</p></div></div>
+  <div class="ring" id="ring"><span class="led"></span><span id="ring-text">Ring: connecting…</span></div>
+</header>
+
+<main class="grid">
+  <section class="panel family">
+    <div class="phone">
+      <div class="phone-top"><span id="clock">--:--</span><span>Ellie · family</span></div>
+      <h2>Mom today</h2>
+      <p class="muted">Mrs. Park · her Ring doorbell</p>
+      <ol class="timeline" id="family-visits"></ol>
+      <h3>Notifications</h3>
+      <ol class="alerts" id="family-alerts"></ol>
+    </div>
+  </section>
+
+  <section class="panel agency">
+    <h2>Agency board <span class="muted small">Sunrise Home Care · today</span></h2>
+    <table class="board">
+      <thead><tr><th>Due</th><th>Client</th><th>Aide</th><th>Status</th><th>Door evidence</th></tr></thead>
+      <tbody id="board"></tbody>
+    </table>
+    <h3>Needs attention</h3>
+    <ol class="alerts" id="agency-alerts"></ol>
+    <h3>Ring API calls <span class="muted small">live, token hidden</span></h3>
+    <ol class="log" id="ring-log"></ol>
+  </section>
+
+  <section class="panel echo">
+    <h2>Ask Alexa <span class="muted small">Alexa+ simulated · CareBell MCP server</span></h2>
+    <div class="show">
+      <iframe id="card" title="CareBell visit card (MCP App)" sandbox="allow-scripts"></iframe>
+      <p class="said" id="said">“Alexa, did Mom's caregiver come today?”</p>
+      <p class="reply" id="reply"></p>
+    </div>
+    <form id="ask" class="ask">
+      <input id="q" autocomplete="off" placeholder="Did Mom's caregiver come today?">
+      <button>Ask</button>
+    </form>
+    <div class="chips">
+      <button data-q="Did Mom's caregiver come today?">Did Mom's caregiver come?</button>
+      <button data-q="What's on today's schedule?">Today's schedule</button>
+      <button data-q="Any alerts?">Any alerts?</button>
+      <button data-q="Tell the agency Mom said her lunch was skipped">Tell the agency…</button>
+    </div>
+    <details class="mcp"><summary>MCP traffic</summary><pre id="mcp-log"></pre></details>
+  </section>
+</main>
+
+<footer class="demo">
+  <span class="muted">Demo door events (signed Ring v1.1 webhooks → /webhooks/ring):</span>
+  <button data-door="park" data-type="button_press">🔔 Ring Mrs. Park's doorbell</button>
+  <button data-door="park" data-type="motion_detected" data-sub="human">🚶 Person at Mrs. Park's door</button>
+  <button data-door="lee" data-type="button_press">🔔 Mr. Lee's doorbell</button>
+  <button data-door="park" data-type="device_offline">📴 Doorbell offline</button>
+  <button data-advance="15">⏩ +15 min</button>
+  <button data-advance="60">⏩ +1 h</button>
+  <button id="reset" class="plain">Reset demo</button>
+</footer>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
